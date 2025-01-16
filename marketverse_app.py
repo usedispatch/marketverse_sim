@@ -3,10 +3,9 @@ import random
 import streamlit as st
 import matplotlib.pyplot as plt
 import seaborn as sns
-import numpy as np
 
 # Initialize the game components
-def initialize_game(num_players, starting_aobucks):
+def initialize_game(num_players, starting_aobucks, assets_config):
     players = pd.DataFrame({
         "Player ID": [f"Player_{i+1}" for i in range(num_players)],
         "Starting AOBucks": [starting_aobucks] * num_players,
@@ -16,12 +15,12 @@ def initialize_game(num_players, starting_aobucks):
     })
 
     assets = pd.DataFrame({
-        "Asset Name": ["MemeOil", "MemeGold", "MemeGrain", "MemeCoffee", "MemeBeans"],
-        "Starting Price": [50, 100, 30, 20, 40],
-        "Current Price": [50, 100, 30, 20, 40],
-        "Supply": [1000, 500, 2000, 1500, 1200],
-        "Transactions": [0] * 5,
-        "Scaling Factor": [0.1, 0.2, 0.15, 0.05, 0.1]
+        "Asset Name": [asset["name"] for asset in assets_config],
+        "Starting Price": [asset["starting_price"] for asset in assets_config],
+        "Current Price": [asset["starting_price"] for asset in assets_config],
+        "Supply": [asset["supply"] for asset in assets_config],
+        "Scaling Factor": [asset["scaling_factor"] for asset in assets_config],
+        "Transactions": [0] * len(assets_config),
     })
 
     transactions = pd.DataFrame(columns=[
@@ -29,8 +28,8 @@ def initialize_game(num_players, starting_aobucks):
     ])
 
     # Create a DataFrame to track price trends
-    price_trends = pd.DataFrame({asset: [initial_price] for asset, initial_price in zip(assets["Asset Name"], assets["Starting Price"])})
-    
+    price_trends = pd.DataFrame({asset["name"]: [asset["starting_price"]] for asset in assets_config})
+
     return players, assets, transactions, price_trends
 
 # Update prices based on bonding curve
@@ -57,7 +56,7 @@ def simulate_trade(players, assets, transactions, transaction_id, max_trade_amou
     players.loc[players["Player ID"] == player_id, "Remaining AOBucks"] += net_aobucks
     players.loc[players["Player ID"] == player_id, "Total Trades"] += 1
     assets.loc[assets["Asset Name"] == asset_name, "Supply"] += trade_amount if action == "Sell" else -trade_amount
-    assets.loc[assets["Asset Name"] == asset_name, "Supply"] = assets.loc[assets["Asset Name"] == asset_name, "Supply"].clip(lower=0)  # Avoid negative supply
+    assets.loc[assets["Asset Name"] == asset_name, "Supply"] = assets.loc[assets["Asset Name"] == asset_name, "Supply"].clip(lower=0)
     update_prices(assets)  # Update prices dynamically
 
     transactions = pd.concat([transactions, pd.DataFrame([{
@@ -69,12 +68,12 @@ def simulate_trade(players, assets, transactions, transaction_id, max_trade_amou
         "Transaction Fee": transaction_fee,
         "Net AOBucks": net_aobucks
     }])], ignore_index=True)
-    
+
     return transactions
 
 # Simulate the game
-def simulate_game(num_players, starting_aobucks, days, transactions_per_day, max_trade_amount):
-    players, assets, transactions, price_trends = initialize_game(num_players, starting_aobucks)
+def simulate_game(num_players, starting_aobucks, days, transactions_per_day, max_trade_amount, assets_config):
+    players, assets, transactions, price_trends = initialize_game(num_players, starting_aobucks, assets_config)
     transaction_id = 1
 
     for day in range(1, days + 1):
@@ -123,12 +122,6 @@ def visualize_game(players, assets, transactions, top_gainers, top_losers, price
     ax.set_title("Transaction Intensity by Player and Asset", fontsize=14)
     st.pyplot(fig)
 
-    st.write("### Top Gainers and Losers")
-    st.write("#### Top Gainers")
-    st.dataframe(top_gainers)
-    st.write("#### Top Losers")
-    st.dataframe(top_losers)
-
     st.write("### Asset Price Trends")
     fig, ax = plt.subplots(figsize=(12, 6))
     for column in price_trends.columns:
@@ -143,16 +136,34 @@ def visualize_game(players, assets, transactions, top_gainers, top_losers, price
 st.title("Marketverse Simulation")
 st.write("Simulate a dynamic trading game in a chaotic AI-driven marketplace.")
 
-# Configurable options
+# Configurable asset parameters
+st.write("### Configure Assets")
+num_assets = st.slider("Number of Assets", min_value=1, max_value=10, value=5)
+assets_config = []
+for i in range(num_assets):
+    st.write(f"#### Asset {i+1}")
+    name = st.text_input(f"Asset {i+1} Name", value=f"MemeAsset_{i+1}")
+    starting_price = st.number_input(f"Starting Price of {name}", min_value=1, value=50)
+    supply = st.number_input(f"Initial Supply of {name}", min_value=1, value=1000)
+    scaling_factor = st.number_input(f"Scaling Factor of {name}", min_value=0.01, value=0.1)
+    assets_config.append({"name": name, "starting_price": starting_price, "supply": supply, "scaling_factor": scaling_factor})
+
+# Configurable player parameters
+st.write("### Configure Players")
 num_players = st.slider("Number of Players", min_value=5, max_value=50, value=10)
 starting_aobucks = st.slider("Starting AOBucks", min_value=1000, max_value=50000, value=10000)
+
+# Configurable simulation parameters
+st.write("### Configure Simulation")
 days = st.slider("Number of Days", min_value=1, max_value=14, value=7)
 transactions_per_day = st.slider("Transactions per Day", min_value=10, max_value=500, value=100)
 max_trade_amount = st.slider("Max Trade Amount", min_value=1, max_value=50, value=10)
 
 # Run Simulation
 if st.button("Run Simulation"):
-    players, assets, transactions, price_trends = simulate_game(num_players, starting_aobucks, days, transactions_per_day, max_trade_amount)
+    players, assets, transactions, price_trends = simulate_game(
+        num_players, starting_aobucks, days, transactions_per_day, max_trade_amount, assets_config
+    )
     top_gainers, top_losers = performance_summary(players, transactions)
     st.write("### Players Data")
     st.dataframe(players)
