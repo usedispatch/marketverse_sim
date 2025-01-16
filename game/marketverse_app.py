@@ -4,14 +4,34 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+# Strategies
+def random_strategy(player, asset):
+    """Randomly decide to Buy or Sell."""
+    return random.choice(["Buy", "Sell"])
+
+def greedy_strategy(player, asset):
+    """Greedy strategy: Buy when price is low, sell when price is high."""
+    if asset["Current Price"] < asset["Starting Price"] * 1.1:  # Buy if price is 10% below starting price
+        return "Buy"
+    else:
+        return "Sell"
+
+def risk_averse_strategy(player, asset):
+    """Risk-averse strategy: Hold AOBucks and avoid frequent trades."""
+    if player["Remaining AOBucks"] > asset["Current Price"] * 2:  # Only buy if plenty of funds
+        return "Buy"
+    else:
+        return "Sell"
+
 # Initialize the game components
-def initialize_game(num_players, starting_aobucks, assets_config):
+def initialize_game(num_players, starting_aobucks, assets_config, strategies):
     players = pd.DataFrame({
         "Player ID": [f"Player_{i+1}" for i in range(num_players)],
         "Starting AOBucks": [starting_aobucks] * num_players,
         "Remaining AOBucks": [starting_aobucks] * num_players,
         "Portfolio Value": [0] * num_players,
-        "Total Trades": [0] * num_players
+        "Total Trades": [0] * num_players,
+        "Strategy": [random.choice(strategies) for _ in range(num_players)]
     })
 
     assets = pd.DataFrame({
@@ -27,7 +47,6 @@ def initialize_game(num_players, starting_aobucks, assets_config):
         "Transaction ID", "Player ID", "Asset Name", "Buy/Sell", "Amount", "Transaction Fee", "Net AOBucks"
     ])
 
-    # Create a DataFrame to track price trends
     price_trends = pd.DataFrame({asset["name"]: [asset["starting_price"]] for asset in assets_config})
 
     return players, assets, transactions, price_trends
@@ -42,8 +61,11 @@ def simulate_trade(players, assets, transactions, transaction_id, max_trade_amou
     asset = assets.sample(1).iloc[0]
     player_id = player["Player ID"]
     asset_name = asset["Asset Name"]
+    strategy = player["Strategy"]
 
-    action = random.choice(["Buy", "Sell"])
+    # Execute strategy
+    action = strategy(player, asset)
+
     max_trade_amount = int(min(player["Remaining AOBucks"] // asset["Current Price"], max_trade_amount)) if action == "Buy" else int(max_trade_amount)
 
     if max_trade_amount <= 0:
@@ -72,8 +94,8 @@ def simulate_trade(players, assets, transactions, transaction_id, max_trade_amou
     return transactions
 
 # Simulate the game
-def simulate_game(num_players, starting_aobucks, days, transactions_per_day, max_trade_amount, assets_config):
-    players, assets, transactions, price_trends = initialize_game(num_players, starting_aobucks, assets_config)
+def simulate_game(num_players, starting_aobucks, days, transactions_per_day, max_trade_amount, assets_config, strategies):
+    players, assets, transactions, price_trends = initialize_game(num_players, starting_aobucks, assets_config, strategies)
     transaction_id = 1
 
     for day in range(1, days + 1):
@@ -106,21 +128,15 @@ def performance_summary(players, transactions, top_n=5):
 def visualize_game(players, assets, transactions, top_gainers, top_losers, price_trends):
     st.write("### Net Gain/Loss Overview")
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(players["Player ID"], players["Net Gain/Loss"], color=["green" if x > 0 else "red" for x in players["Net Gain/Loss"]])
-    ax.set_title("Net Gain/Loss by Player", fontsize=14)
-    ax.set_xlabel("Player ID", fontsize=12)
+    sns.barplot(x=players["Strategy"].apply(lambda x: x.__name__), y=players["Net Gain/Loss"], ax=ax, ci=None)
+    ax.set_title("Net Gain/Loss by Strategy", fontsize=14)
+    ax.set_xlabel("Strategy", fontsize=12)
     ax.set_ylabel("Net Gain/Loss (AOBucks)", fontsize=12)
-    plt.xticks(rotation=45)
     st.pyplot(fig)
 
-    st.write("### Transaction Intensity Heatmap")
-    transaction_heatmap = transactions.pivot_table(
-        index="Player ID", columns="Asset Name", values="Amount", aggfunc="sum", fill_value=0
-    )
-    fig, ax = plt.subplots(figsize=(10, 8))
-    sns.heatmap(transaction_heatmap, annot=True, fmt=".0f", cmap="YlGnBu", cbar=True, ax=ax)
-    ax.set_title("Transaction Intensity by Player and Asset", fontsize=14)
-    st.pyplot(fig)
+    st.write("### Winners and Losers Breakdown")
+    st.dataframe(top_gainers)
+    st.dataframe(top_losers)
 
     st.write("### Asset Price Trends")
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -159,10 +175,13 @@ days = st.slider("Number of Days", min_value=1, max_value=14, value=7)
 transactions_per_day = st.slider("Transactions per Day", min_value=10, max_value=500, value=100)
 max_trade_amount = st.slider("Max Trade Amount", min_value=1, max_value=50, value=10)
 
+# Assign strategies
+strategies = [random_strategy, greedy_strategy, risk_averse_strategy]
+
 # Run Simulation
 if st.button("Run Simulation"):
     players, assets, transactions, price_trends = simulate_game(
-        num_players, starting_aobucks, days, transactions_per_day, max_trade_amount, assets_config
+        num_players, starting_aobucks, days, transactions_per_day, max_trade_amount, assets_config, strategies
     )
     top_gainers, top_losers = performance_summary(players, transactions)
     st.write("### Players Data")
