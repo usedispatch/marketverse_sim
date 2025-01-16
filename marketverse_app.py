@@ -47,13 +47,14 @@ def simulate_trade(players, assets, transactions, transaction_id, max_trade_amou
     if max_trade_amount <= 0:
         return transactions  # Skip if no valid trade is possible
 
-    trade_amount = random.randint(1, max_trade_amount)  # Ensure max_trade_amount is an int
+    trade_amount = random.randint(1, max_trade_amount)
     transaction_fee = trade_amount * asset["Current Price"] * 0.01
     net_aobucks = -trade_amount * asset["Current Price"] - transaction_fee if action == "Buy" else trade_amount * asset["Current Price"]
 
     players.loc[players["Player ID"] == player_id, "Remaining AOBucks"] += net_aobucks
+    players.loc[players["Player ID"] == player_id, "Total Trades"] += 1
     assets.loc[assets["Asset Name"] == asset_name, "Supply"] += trade_amount if action == "Sell" else -trade_amount
-    assets.loc[assets["Asset Name"] == asset_name, "Transactions"] += 1
+    assets.loc[assets["Asset Name"] == asset_name, "Supply"] = assets.loc[assets["Asset Name"] == asset_name, "Supply"].clip(lower=0)  # Avoid negative supply
     update_prices(assets)  # Update prices dynamically
 
     transactions = pd.concat([transactions, pd.DataFrame([{
@@ -80,8 +81,11 @@ def simulate_game(num_players, starting_aobucks, days, transactions_per_day, max
 
         # Recalculate portfolio values at the end of each day
         for i, player in players.iterrows():
-            player_assets = transactions[(transactions["Player ID"] == player["Player ID"]) & (transactions["Buy/Sell"] == "Buy")]
-            portfolio_value = sum(player_assets["Amount"] * player_assets["Net AOBucks"])
+            portfolio_value = sum(
+                transactions[(transactions["Player ID"] == player["Player ID"]) & (transactions["Buy/Sell"] == "Buy") & (transactions["Asset Name"] == asset)]["Amount"].sum()
+                * assets[assets["Asset Name"] == asset]["Current Price"].values[0]
+                for asset in assets["Asset Name"]
+            )
             players.loc[i, "Portfolio Value"] = portfolio_value
 
     return players, assets, transactions
@@ -91,19 +95,10 @@ def performance_summary(players, transactions, top_n=5):
     players["Net Gain/Loss"] = players["Remaining AOBucks"] + players["Portfolio Value"] - players["Starting AOBucks"]
     top_gainers = players.nlargest(top_n, "Net Gain/Loss")
     top_losers = players.nsmallest(top_n, "Net Gain/Loss")
-
-    summaries = []
-    for group, title in [(top_gainers, "Top Gainers"), (top_losers, "Top Losers")]:
-        group_summary = group.copy()
-        group_summary["Reason"] = group_summary.apply(
-            lambda row: "Aggressive trading" if row["Total Trades"] > 50 else "Conservative strategy",
-            axis=1
-        )
-        summaries.append((title, group_summary))
-    return summaries
+    return top_gainers, top_losers
 
 # Visualizations
-def visualize_game(players, assets, transactions, performance_summaries):
+def visualize_game(players, assets, transactions, top_gainers, top_losers):
     st.write("### Net Gain/Loss Overview")
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(players["Player ID"], players["Net Gain/Loss"], color=["green" if x > 0 else "red" for x in players["Net Gain/Loss"]])
@@ -123,9 +118,10 @@ def visualize_game(players, assets, transactions, performance_summaries):
     st.pyplot(fig)
 
     st.write("### Top Gainers and Losers")
-    for title, summary in performance_summaries:
-        st.write(f"#### {title}")
-        st.dataframe(summary)
+    st.write("#### Top Gainers")
+    st.dataframe(top_gainers)
+    st.write("#### Top Losers")
+    st.dataframe(top_losers)
 
 # Streamlit App
 st.title("Marketverse Simulation")
@@ -141,9 +137,9 @@ max_trade_amount = st.slider("Max Trade Amount", min_value=1, max_value=50, valu
 # Run Simulation
 if st.button("Run Simulation"):
     players, assets, transactions = simulate_game(num_players, starting_aobucks, days, transactions_per_day, max_trade_amount)
-    performance_summaries = performance_summary(players, transactions)
+    top_gainers, top_losers = performance_summary(players, transactions)
     st.write("### Players Data")
     st.dataframe(players)
     st.write("### Transactions Log")
     st.dataframe(transactions)
-    visualize_game(players, assets, transactions, performance_summaries)
+    visualize_game(players, assets, transactions, top_gainers, top_losers)
