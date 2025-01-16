@@ -21,14 +21,17 @@ def initialize_game(num_players, starting_aobucks):
         "Current Price": [50, 100, 30, 20, 40],
         "Supply": [1000, 500, 2000, 1500, 1200],
         "Transactions": [0] * 5,
-        "Scaling Factor": [0.1, 0.2, 0.15, 0.05, 0.1]  # Scaling factor for bonding curve
+        "Scaling Factor": [0.1, 0.2, 0.15, 0.05, 0.1]
     })
 
     transactions = pd.DataFrame(columns=[
         "Transaction ID", "Player ID", "Asset Name", "Buy/Sell", "Amount", "Transaction Fee", "Net AOBucks"
     ])
+
+    # Create a DataFrame to track price trends
+    price_trends = pd.DataFrame({asset: [initial_price] for asset, initial_price in zip(assets["Asset Name"], assets["Starting Price"])})
     
-    return players, assets, transactions
+    return players, assets, transactions, price_trends
 
 # Update prices based on bonding curve
 def update_prices(assets):
@@ -71,13 +74,16 @@ def simulate_trade(players, assets, transactions, transaction_id, max_trade_amou
 
 # Simulate the game
 def simulate_game(num_players, starting_aobucks, days, transactions_per_day, max_trade_amount):
-    players, assets, transactions = initialize_game(num_players, starting_aobucks)
+    players, assets, transactions, price_trends = initialize_game(num_players, starting_aobucks)
     transaction_id = 1
 
     for day in range(1, days + 1):
         for _ in range(transactions_per_day):
             transactions = simulate_trade(players, assets, transactions, transaction_id, max_trade_amount)
             transaction_id += 1
+
+        # Record current prices for each asset
+        price_trends.loc[day] = assets["Current Price"].values
 
         # Recalculate portfolio values at the end of each day
         for i, player in players.iterrows():
@@ -88,7 +94,7 @@ def simulate_game(num_players, starting_aobucks, days, transactions_per_day, max
             )
             players.loc[i, "Portfolio Value"] = portfolio_value
 
-    return players, assets, transactions
+    return players, assets, transactions, price_trends
 
 # Generate performance summaries
 def performance_summary(players, transactions, top_n=5):
@@ -98,7 +104,7 @@ def performance_summary(players, transactions, top_n=5):
     return top_gainers, top_losers
 
 # Visualizations
-def visualize_game(players, assets, transactions, top_gainers, top_losers):
+def visualize_game(players, assets, transactions, top_gainers, top_losers, price_trends):
     st.write("### Net Gain/Loss Overview")
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(players["Player ID"], players["Net Gain/Loss"], color=["green" if x > 0 else "red" for x in players["Net Gain/Loss"]])
@@ -123,6 +129,16 @@ def visualize_game(players, assets, transactions, top_gainers, top_losers):
     st.write("#### Top Losers")
     st.dataframe(top_losers)
 
+    st.write("### Asset Price Trends")
+    fig, ax = plt.subplots(figsize=(12, 6))
+    for column in price_trends.columns:
+        ax.plot(price_trends.index, price_trends[column], label=column)
+    ax.set_title("Price Trends of Assets Over Time", fontsize=14)
+    ax.set_xlabel("Day", fontsize=12)
+    ax.set_ylabel("Price (AOBucks)", fontsize=12)
+    ax.legend(title="Assets")
+    st.pyplot(fig)
+
 # Streamlit App
 st.title("Marketverse Simulation")
 st.write("Simulate a dynamic trading game in a chaotic AI-driven marketplace.")
@@ -136,10 +152,10 @@ max_trade_amount = st.slider("Max Trade Amount", min_value=1, max_value=50, valu
 
 # Run Simulation
 if st.button("Run Simulation"):
-    players, assets, transactions = simulate_game(num_players, starting_aobucks, days, transactions_per_day, max_trade_amount)
+    players, assets, transactions, price_trends = simulate_game(num_players, starting_aobucks, days, transactions_per_day, max_trade_amount)
     top_gainers, top_losers = performance_summary(players, transactions)
     st.write("### Players Data")
     st.dataframe(players)
     st.write("### Transactions Log")
     st.dataframe(transactions)
-    visualize_game(players, assets, transactions, top_gainers, top_losers)
+    visualize_game(players, assets, transactions, top_gainers, top_losers, price_trends)
