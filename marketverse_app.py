@@ -6,13 +6,13 @@ import seaborn as sns
 import numpy as np
 
 # Initialize the game components
-def initialize_game():
+def initialize_game(num_players):
     players = pd.DataFrame({
-        "Player ID": [f"Player_{i+1}" for i in range(10)],  # 10 players
-        "Starting AOBucks": [10000] * 10,
-        "Remaining AOBucks": [10000] * 10,
-        "Portfolio Value": [0] * 10,
-        "Total Trades": [0] * 10
+        "Player ID": [f"Player_{i+1}" for i in range(num_players)],
+        "Starting AOBucks": [10000] * num_players,
+        "Remaining AOBucks": [10000] * num_players,
+        "Portfolio Value": [0] * num_players,
+        "Total Trades": [0] * num_players
     })
 
     assets = pd.DataFrame({
@@ -63,13 +63,13 @@ def simulate_trade(players, assets, transactions, transaction_id):
     
     return transactions
 
-# Simulate the game for multiple days
-def simulate_game(days=7):
-    players, assets, transactions = initialize_game()
+# Simulate the game
+def simulate_game(num_players, days, transactions_per_day):
+    players, assets, transactions = initialize_game(num_players)
     transaction_id = 1
 
     for day in range(1, days + 1):
-        for _ in range(100):  # Number of transactions per day
+        for _ in range(transactions_per_day):
             transactions = simulate_trade(players, assets, transactions, transaction_id)
             transaction_id += 1
 
@@ -82,36 +82,62 @@ def simulate_game(days=7):
     return players, assets, transactions
 
 # Visualizations
-def show_visualizations(players, assets, transactions):
-    # Bar Chart: Net Gain/Loss
+def visualize_game(players, transactions, top_n=5):
     players["Net Gain/Loss"] = players["Remaining AOBucks"] + players["Portfolio Value"] - players["Starting AOBucks"]
+
+    # Top Gainers and Losers
+    top_gainers = players.nlargest(top_n, "Net Gain/Loss")
+    top_losers = players.nsmallest(top_n, "Net Gain/Loss")
+
+    # Bar Chart: Net Gain/Loss
+    st.write("### Net Gain/Loss for All Players")
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(players["Player ID"], players["Net Gain/Loss"], color=["green" if x > 0 else "red" for x in players["Net Gain/Loss"]])
-    ax.set_title("Net Gain/Loss for Each Player", fontsize=14)
+    ax.set_title("Net Gain/Loss by Player", fontsize=14)
     ax.set_xlabel("Player ID", fontsize=12)
     ax.set_ylabel("Net Gain/Loss (AOBucks)", fontsize=12)
+    plt.xticks(rotation=45)
     st.pyplot(fig)
 
     # Heatmap: Transaction Intensity
+    st.write("### Transaction Intensity Heatmap")
     transaction_heatmap = transactions.pivot_table(
         index="Player ID", columns="Asset Name", values="Amount", aggfunc="sum", fill_value=0
     )
-    st.write("### Transaction Intensity Heatmap")
-    st.write(sns.heatmap(transaction_heatmap, annot=True, fmt=".0f", cmap="YlGnBu", cbar=True).figure)
+    fig, ax = plt.subplots(figsize=(10, 8))
+    sns.heatmap(transaction_heatmap, annot=True, fmt=".0f", cmap="YlGnBu", cbar=True, ax=ax)
+    ax.set_title("Transaction Intensity by Player and Asset", fontsize=14)
+    st.pyplot(fig)
+
+    # Individual Player Performance
+    st.write("### Top Gainers and Losers")
+    for idx, row in pd.concat([top_gainers, top_losers]).iterrows():
+        player_id = row["Player ID"]
+        player_transactions = transactions[transactions["Player ID"] == player_id]
+
+        st.write(f"#### {player_id} - Net Gain/Loss: {row['Net Gain/Loss']:.2f}")
+        st.write("Transaction Summary:")
+        st.dataframe(player_transactions)
+        st.write("---")
 
 # Streamlit App
-st.title("Marketverse Simulation App")
-st.write("Simulate a 7-day trading game in the chaotic Marketverse arena.")
+st.title("Marketverse Simulation")
+st.write("Simulate a dynamic trading game in a chaotic AI-driven marketplace.")
+
+# Configurable options
+num_players = st.slider("Number of Players", min_value=5, max_value=50, value=10)
+days = st.slider("Number of Days", min_value=1, max_value=14, value=7)
+transactions_per_day = st.slider("Transactions per Day", min_value=10, max_value=500, value=100)
 
 # Simulate the game
 if st.button("Run Simulation"):
-    players, assets, transactions = simulate_game()
+    players, assets, transactions = simulate_game(num_players, days, transactions_per_day)
+
+    # Display Data
     st.write("### Players Data")
     st.dataframe(players)
-    st.write("### Assets Data")
-    st.dataframe(assets)
     st.write("### Transactions Log")
     st.dataframe(transactions)
 
-    # Show visualizations
-    show_visualizations(players, assets, transactions)
+    # Visualize Results
+    visualize_game(players, transactions)

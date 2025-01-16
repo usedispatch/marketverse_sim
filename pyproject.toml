@@ -1,13 +1,20 @@
 [tool.poetry]
 name = "game"
 version = "0.1.0"
-description = ""
+description = "A Streamlit app for simulating the Marketverse game"
 authors = ["viksit <viksit@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.12"
+pandas = "^1.3"
+matplotlib = "^3.5"
+seaborn = "^0.11"
+numpy = "^1.21"
+streamlit = "^1.14"
 
+[tool.poetry.scripts]
+game = "marketverse_app:main"
 
 [build-system]
 requires = ["poetry-core"]
